@@ -11,6 +11,7 @@ import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
+from torch.utils.data import Dataset
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
@@ -19,6 +20,10 @@ import resnet as RN
 import pyramidnet as PYRM
 import utils
 import numpy as np
+from torchvision.datasets import STL10
+from PIL import Image
+import joblib
+from torch.utils.data import DataLoader
 
 import warnings
 
@@ -69,6 +74,32 @@ best_err1 = 100
 best_err5 = 100
 
 
+class myDataSet(STL10):
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        if self.labels is not None:
+            img, target = self.data[index], int(self.labels[index])
+        else:
+            img, target = self.data[index], None
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(np.transpose(img, (1, 2, 0)))
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target, index
+
 def main():
     global args, best_err1, best_err5
     args = parser.parse_args()
@@ -107,6 +138,65 @@ def main():
             numberofclass = 10
         else:
             raise Exception('unknown dataset: {}'.format(args.dataset))
+
+    elif args.dataset == 'stl10':
+        normalize = transforms.Normalize(mean=[x / 255.0 for x in [125.3, 123.0, 113.9]],
+                                         std=[x / 255.0 for x in [63.0, 62.1, 66.7]])
+        transform_train=transforms.Compose([
+            transforms.RandomCrop(96),
+            transforms.Resize(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ])
+        transform_test=transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor(),
+            normalize
+        ])
+        train_loader = torch.utils.data.DataLoader(
+            myDataSet('../data', split='train', download=True, transform=transform_train),
+            batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+        val_loader = torch.utils.data.DataLoader(
+            myDataSet('../data', split='test', transform=transform_test),
+            batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+        numberofclass = 10
+
+    elif args.dataset == 'caltech101':
+        image_transforms = {
+        # Train uses data augmentation]
+            'train':
+            transforms.Compose([
+                #transforms.RandomResizedCrop(size=256, scale=(0.8, 1.0)),
+                #transforms.RandomRotation(degrees=15),
+                #transforms.ColorJitter(),
+                transforms.CenterCrop(size=224),  # Image net standards
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406],
+                                     [0.229, 0.224, 0.225])  # Imagenet standards
+            ]),
+            # Validation does not use augmentation
+            'valid':
+            transforms.Compose([
+                #transforms.Resize(size=256),
+                transforms.CenterCrop(size=224),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ]),
+        }
+
+        """
+        data = {
+            'train': datasets.ImageFolder(root='../101_ObjectCategories_train', transform=image_transforms['train']),
+            'valid': datasets.ImageFolder(root='../101_ObjectCategories_val', transform=image_transforms['valid']),
+        }
+        """
+
+        # Dataloader iterators, make sure to shuffle
+        data = datasets.ImageFolder(root='../101_ObjectCategories', transform=image_transforms['train'])
+        train_set, val_set = torch.utils.data.random_split(data, [8000, 1146])
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True),
+        val_loader = DataLoader(val_set, batch_size=arts.batch_size, shuffle=True)
 
     elif args.dataset == 'imagenet':
         traindir = os.path.join('/home/data/ILSVRC/train')
@@ -217,7 +307,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     end = time.time()
     current_LR = get_learning_rate(optimizer)[0]
-    for i, (input, target) in enumerate(train_loader):
+    for i, (input, target, index) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -228,7 +318,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         if args.beta > 0 and r < args.cutmix_prob:
             # generate mixed sample
             lam = np.random.beta(args.beta, args.beta)
-            rand_index = torch.randperm(input.size()[0]).cuda()
+            rand_index = torch.randperm(input.size()[0])
             target_a = target
             target_b = target[rand_index]
             bbx1, bby1, bbx2, bby2 = rand_bbox(input.size(), lam)
@@ -305,7 +395,7 @@ def validate(val_loader, model, criterion, epoch):
     model.eval()
 
     end = time.time()
-    for i, (input, target) in enumerate(val_loader):
+    for i, (input, target, index) in enumerate(val_loader):
         target = target.cuda()
 
         output = model(input)
@@ -370,7 +460,7 @@ def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     if args.dataset.startswith('cifar'):
         lr = args.lr * (0.1 ** (epoch // (args.epochs * 0.5))) * (0.1 ** (epoch // (args.epochs * 0.75)))
-    elif args.dataset == ('imagenet'):
+    elif args.dataset == ('imagenet') or args.dataset == 'stl10':
         if args.epochs == 300:
             lr = args.lr * (0.1 ** (epoch // 75))
         else:
