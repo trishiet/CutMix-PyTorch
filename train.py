@@ -318,7 +318,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         if args.beta > 0 and r < args.cutmix_prob:
             # generate mixed sample
             lam = np.random.beta(args.beta, args.beta)
-            rand_index = torch.randperm(input.size()[0])
+            rand_index = torch.randperm(input.size()[0]).cuda()
             target_a = target
             target_b = target[rand_index]
             bbx1, bby1, bbx2, bby2 = rand_bbox(input.size(), lam)
