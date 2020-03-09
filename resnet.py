@@ -103,7 +103,7 @@ class ResNet(nn.Module):
             self.avgpool = nn.AvgPool2d(8)
             self.fc = nn.Linear(64 * block.expansion, num_classes)
 
-        elif dataset == 'imagenet':
+        elif dataset == 'imagenet' or dataset == 'caltech101' or dataset == 'stl10':
             blocks ={18: BasicBlock, 34: BasicBlock, 50: Bottleneck, 101: Bottleneck, 152: Bottleneck, 200: Bottleneck}
             layers ={18: [2, 2, 2, 2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], 200: [3, 24, 36, 3]}
             assert layers[depth], 'invalid detph for ResNet (depth should be one of 18, 34, 50, 101, 152, and 200)'
@@ -159,7 +159,7 @@ class ResNet(nn.Module):
             x = x.view(x.size(0), -1)
             x = self.fc(x)
 
-        elif self.dataset == 'imagenet':
+        elif self.dataset == 'imagenet' or self.dataset == 'caltech101' or self.dataset == 'stl10':
             x = self.conv1(x)
             x = self.bn1(x)
             x = self.relu(x)
