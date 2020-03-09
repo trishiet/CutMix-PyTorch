@@ -15,6 +15,7 @@ from torch.utils.data import Dataset
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+from torchvision.datasets import DatasetFolder
 import torchvision.models as models
 import resnet as RN
 import pyramidnet as PYRM
@@ -242,9 +243,10 @@ def main():
 
         # Dataloader iterators, make sure to shuffle
         data = datasets.ImageFolder(root='101_ObjectCategories', transform=image_transforms['train'])
-        train_set, val_set = torch.utils.data.random_split(data, [8000, 1146])
+        train_set, val_set = torch.utils.data.random_split(data, [7000, 2144])
         train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True),
-        val_loader = DataLoader(val_set, batch_size=arts.batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
+        numberofclass = 102
 
     elif args.dataset == 'imagenet':
         traindir = os.path.join('/home/data/ILSVRC/train')
