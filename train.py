@@ -73,6 +73,61 @@ parser.set_defaults(verbose=True)
 best_err1 = 100
 best_err5 = 100
 
+IMG_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp')
+
+def accimage_loader(path):
+    import accimage
+    try:
+        return accimage.Image(path)
+    except IOError:
+        # Potentially a decoding problem, fall back to PIL.Image
+        return pil_loader(path)
+
+
+def default_loader(path):
+    from torchvision import get_image_backend
+    if get_image_backend() == 'accimage':
+        return accimage_loader(path)
+    else:
+        return pil_loader(path)
+
+class myImageFolder(DatasetFolder):
+    def __init__(self, root, transform=None, target_transform=None,
+                 loader=default_loader, is_valid_file=None):
+        super(myImageFolder, self).__init__(root, loader, IMG_EXTENSIONS if is_valid_file is None else None,
+                                          transform=transform,
+                                          target_transform=target_transform,
+                                          is_valid_file=is_valid_file)
+        self.imgs = self.samples
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        if self.targets is not None:
+            img, target = self.imgs[index]
+        else:
+            img, target = self.imgs[index]
+            
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.open(img)
+        img = img.convert('RGB')
+        #img = Image.fromarray(np.transpose(img, (1, 2, 0)))
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        print(img, target, index)
+
+        return img, target, index
 
 class myDataSet(STL10):
     def __getitem__(self, index):
@@ -185,15 +240,8 @@ def main():
             ]),
         }
 
-        """
-        data = {
-            'train': datasets.ImageFolder(root='../101_ObjectCategories_train', transform=image_transforms['train']),
-            'valid': datasets.ImageFolder(root='../101_ObjectCategories_val', transform=image_transforms['valid']),
-        }
-        """
-
         # Dataloader iterators, make sure to shuffle
-        data = datasets.ImageFolder(root='../101_ObjectCategories', transform=image_transforms['train'])
+        data = datasets.ImageFolder(root='101_ObjectCategories', transform=image_transforms['train'])
         train_set, val_set = torch.utils.data.random_split(data, [8000, 1146])
         train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True),
         val_loader = DataLoader(val_set, batch_size=arts.batch_size, shuffle=True)
@@ -460,7 +508,7 @@ def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     if args.dataset.startswith('cifar'):
         lr = args.lr * (0.1 ** (epoch // (args.epochs * 0.5))) * (0.1 ** (epoch // (args.epochs * 0.75)))
-    elif args.dataset == ('imagenet') or args.dataset == 'stl10':
+    elif args.dataset == ('imagenet') or args.dataset == 'stl10' or args.dataset == 'caltech101':
         if args.epochs == 300:
             lr = args.lr * (0.1 ** (epoch // 75))
         else:
