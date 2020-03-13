@@ -392,7 +392,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
             alpha_image = []
             for j in index:
                 one_plane = []
-                for k in range(3)
+                for k in range(3):
                     one_plane.append(stl10_alpha[j])
                 alpha_image.append(one_plane)
             alpha_image = np.array(alpha_image)
