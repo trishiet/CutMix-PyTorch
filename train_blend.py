@@ -435,7 +435,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                 ratio = float(np.count_nonzero(alpha_mask)) / np.size(alpha_mask)
                 lam = 1 - (ratio * (bbx2 - bbx1) * (bby2 - bby1)) / (input.size()[-1] * input.size()[-2])
             elif args.label_blend == 'alphas-only':
-                lam = 1 - (float(np.count_nonzero(alpha_mask)) / np.count_nonzero(alpha_image))
+                lam = 1 - (float(np.count_nonzero(alpha_mask) + 0.000001) / (np.count_nonzero(alpha_image) + 0.000001))
 
             # compute output
             output = model(input)
