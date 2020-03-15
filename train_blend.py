@@ -74,6 +74,8 @@ parser.add_argument('--beta', default=0, type=float,
                     help='hyperparameter beta')
 parser.add_argument('--cutmix_prob', default=0, type=float,
                     help='cutmix probability')
+parser.add_argument('--label_blend', default='cutmix', type=str,
+                    help='type of label blending')
 
 parser.set_defaults(bottleneck=True)
 parser.set_defaults(verbose=True)
@@ -360,10 +362,19 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     end = time.time()
+
+    # Learning rate parameter
     current_LR = get_learning_rate(optimizer)[0]
+    print("current_LR", current_LR)
 
     stl10_alpha = STL10Alpha(root_dir = 'alpha_images')
+
+    # i is index
+    # input is list BATCH_SIZE image matrices
+    # target is list of BATCH_SIZE label (ints)
+    # index is list of BATCH_SIZE image ids
     for i, (input, target, index) in enumerate(train_loader):
+        print("i, (input, target, index)", i, (input, target, index))
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -371,23 +382,32 @@ def train(train_loader, model, criterion, optimizer, epoch):
         target = target.cuda()
 
         r = np.random.rand(1)
+
+        # beta parameter, 1.0
+        print("args.beta", args.beta)
         if args.beta > 0 and r < args.cutmix_prob:
             # generate mixed sample
+            # lam is random decimal between 0 and 1
             lam = np.random.beta(args.beta, args.beta)
-            rand_index = torch.randperm(input.size()[0])
-            target_a = target
-            target_b = target[rand_index]
-            bbx1, bby1, bbx2, bby2 = rand_bbox(input.size(), lam)
+            #print("lam", lam)
 
-            """
-            # Load alpha Image
-            image_shape = (input.size()[2], input.size()[3])
-            im = Image.open('GT01_a.png').resize(image_shape)
-            # Load alpha RGB Image. Note: This won't be needed because we already have this loaded in case of CIFAR
-            rgb_mask_image = moveaxis(asarray(Image.open('GT01.png').resize(image_shape)), 2, 0)
-            rgbimg = Image.new("RGBA", im.size)
-            rgbimg.paste(im)
-            """
+            # take vector of [0, 1, ..., BATCH_SIZE - 1] and shuffle these indices
+            rand_index = torch.randperm(input.size()[0])
+            #print("rand_index", rand_index)
+
+            # the original batch labels vector
+            target_a = target
+            #print("target_a", target_a)
+
+            # For each index in rand_index , target_b[i] = target_a[index]
+            target_b = target[rand_index]
+            #print("target_b", target_b)
+
+            # top left and bottom right points of bounding box
+            # y starts at 0 at the top and increases going down
+            bbx1, bby1, bbx2, bby2 = rand_bbox(input.size(), lam)
+            #print("bounding box (x1, y1, x2, y2)", bbx1, bby1, bbx2, bby2)
+
             # Normalizing and making sure alpha image is of correct dims and bounding box is cut
             alpha_image = []
             for j in index:
@@ -395,19 +415,31 @@ def train(train_loader, model, criterion, optimizer, epoch):
                 for k in range(3):
                     one_plane.append(stl10_alpha[j])
                 alpha_image.append(one_plane)
+
             alpha_image = np.array(alpha_image)
             alpha_mask = alpha_image[:, :, bbx1:bbx2, bby1:bby2]
             #alpha_mask_channel_first = moveaxis(alpha_mask, 2, 0)
+
             foreground = np.multiply(input.cpu()[:, :, bbx1:bbx2, bby1:bby2], alpha_mask)
             background = np.multiply(input.cpu()[rand_index, :, bbx1:bbx2, bby1:bby2], 1-alpha_mask)
+
             input[:, :, bbx1:bbx2, bby1:bby2] = np.add(foreground, background)
 
-            # adjust lambda to exactly match pixel ratio
-            lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (input.size()[-1] * input.size()[-2]))
+            # lambda is 1 - the ratio of bounding box area to total image area
+            # lambda is also the weight applied to the loss for unshuffled batch images
+            # 1 - lambda is the weight applied to the loss portion of shuffled batch images
+
+            if args.label_blend == 'cutmix':
+                lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (input.size()[-1] * input.size()[-2]))
+            elif args.label_blend == 'cutblend':
+                ratio = float(np.count_nonzero(alpha_mask)) / np.size(alpha_mask)
+                lam = 1 - (ratio * (bbx2 - bbx1) * (bby2 - bby1)) / (input.size()[-1] * input.size()[-2])
+            elif args.label_blend == 'alphas-only':
+                lam = 1 - (float(np.count_nonzero(alpha_mask)) / np.count_nonzero(alpha_image))
+
             # compute output
             output = model(input)
             loss = criterion(output, target_a) * lam + criterion(output, target_b) * (1. - lam)
-            
         else:
             # compute output
             output = model(input)
