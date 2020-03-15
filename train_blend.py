@@ -365,7 +365,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     # Learning rate parameter
     current_LR = get_learning_rate(optimizer)[0]
-    print("current_LR", current_LR)
+    # print("current_LR", current_LR)
 
     stl10_alpha = STL10Alpha(root_dir = 'alpha_images')
 
@@ -374,7 +374,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
     # target is list of BATCH_SIZE label (ints)
     # index is list of BATCH_SIZE image ids
     for i, (input, target, index) in enumerate(train_loader):
-        print("i, (input, target, index)", i, (input, target, index))
+        # print("i, (input, target, index)", i, (input, target, index))
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -384,7 +384,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         r = np.random.rand(1)
 
         # beta parameter, 1.0
-        print("args.beta", args.beta)
+        # print("args.beta", args.beta)
         if args.beta > 0 and r < args.cutmix_prob:
             # generate mixed sample
             # lam is random decimal between 0 and 1
