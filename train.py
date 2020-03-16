@@ -5,6 +5,7 @@ import os
 import shutil
 import time
 
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -364,6 +365,15 @@ def train(train_loader, model, criterion, optimizer, epoch):
         input = input.cuda()
         target = target.cuda()
 
+        print(input.cpu().data.numpy().shape)
+        arr = input.cpu().data.numpy()[0]
+        print(arr.dtype)
+        arr_reshaped = np.transpose(arr, (1, 2, 0))
+        print(arr_reshaped.size)
+        print(arr_reshaped)
+        img = Image.fromarray(arr_reshaped)
+        img.save('bruh-before.png')
+
         r = np.random.rand(1)
         if args.beta > 0 and r < args.cutmix_prob:
             # generate mixed sample
@@ -373,6 +383,14 @@ def train(train_loader, model, criterion, optimizer, epoch):
             target_b = target[rand_index]
             bbx1, bby1, bbx2, bby2 = rand_bbox(input.size(), lam)
             input[:, :, bbx1:bbx2, bby1:bby2] = input[rand_index, :, bbx1:bbx2, bby1:bby2]
+
+            arr = input.cpu().data.numpy()[0]
+            print(arr.dtype)
+            arr_reshaped = np.transpose(arr, (1, 2, 0))
+            img = Image.fromarray(arr_reshaped)
+            img.save('bruh-after.png')
+            break
+
             # adjust lambda to exactly match pixel ratio
             lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (input.size()[-1] * input.size()[-2]))
             # compute output

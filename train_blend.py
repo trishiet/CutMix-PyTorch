@@ -416,14 +416,35 @@ def train(train_loader, model, criterion, optimizer, epoch):
                     one_plane.append(stl10_alpha[j])
                 alpha_image.append(one_plane)
 
-            alpha_image = np.array(alpha_image)
-            alpha_mask = alpha_image[:, :, bbx1:bbx2, bby1:bby2]
+            alpha_image = np.array(alpha_image, dtype=np.float32)
+            alpha_mask = np.clip(alpha_image[:, :, bbx1:bbx2, bby1:bby2], 0, 1)
             #alpha_mask_channel_first = moveaxis(alpha_mask, 2, 0)
+            '''
+            print(alpha_mask)
+            print(alpha_mask.shape)
+            foreground_alpha_tensor = torch.from_numpy(alpha_mask)
+            print(foreground_alpha_tensor.size())
+            print(type(foreground_alpha_tensor.data))
 
-            foreground = np.multiply(input.cpu()[:, :, bbx1:bbx2, bby1:bby2], alpha_mask)
-            background = np.multiply(input.cpu()[rand_index, :, bbx1:bbx2, bby1:bby2], 1-alpha_mask)
+            background_alpha_tensor = torch.from_numpy(1 - alpha_mask)
+            print(background_alpha_tensor.size())
+            print(type(background_alpha_tensor.data))
 
-            input[:, :, bbx1:bbx2, bby1:bby2] = np.add(foreground, background)
+            existing = input.cpu()[:, :, bbx1:bbx2, bby1:bby2]
+            print(existing.size())
+            print(type(existing.data))
+
+            foreground = torch.mm(input.cpu()[:, :, bbx1:bbx2, bby1:bby2], foreground_alpha_tensor)
+            background = torch.mm(input.cpu()[rand_index, :, bbx1:bbx2, bby1:bby2].numpy(), background_alpha_tensor)
+            combined = torch.add(foreground, background)
+            print(combined.shape)
+            input[:, :, bbx1:bbx2, bby1:bby2] = combined
+            '''
+
+            foreground_input = input.cpu()[:, :, bbx1:bbx2, bby1:bby2].numpy()
+            foreground = np.multiply(foreground_input, alpha_mask)
+            background = np.multiply(input.cpu()[rand_index, :, bbx1:bbx2, bby1:bby2].numpy(), 1-alpha_mask)
+            input[:, :, bbx1:bbx2, bby1:bby2] = torch.from_numpy(np.add(foreground, background))
 
             # lambda is 1 - the ratio of bounding box area to total image area
             # lambda is also the weight applied to the loss for unshuffled batch images
@@ -432,10 +453,10 @@ def train(train_loader, model, criterion, optimizer, epoch):
             if args.label_blend == 'cutmix':
                 lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (input.size()[-1] * input.size()[-2]))
             elif args.label_blend == 'cutblend':
-                ratio = float(np.count_nonzero(alpha_mask)) / np.size(alpha_mask)
+                ratio = np.count_nonzero(alpha_mask) + 0.000001 / (np.size(alpha_mask) + 0.000001)
                 lam = 1 - (ratio * (bbx2 - bbx1) * (bby2 - bby1)) / (input.size()[-1] * input.size()[-2])
             elif args.label_blend == 'alphas-only':
-                lam = 1 - (float(np.count_nonzero(alpha_mask) + 0.000001) / (np.count_nonzero(alpha_image) + 0.000001))
+                lam = 1 - (np.count_nonzero(alpha_mask) + 0.000001) / (np.count_nonzero(alpha_image) + 0.000001)
 
             # compute output
             output = model(input)
