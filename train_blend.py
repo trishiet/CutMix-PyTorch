@@ -76,6 +76,8 @@ parser.add_argument('--cutmix_prob', default=0, type=float,
                     help='cutmix probability')
 parser.add_argument('--label_blend', default='cutmix', type=str,
                     help='type of label blending')
+parser.add_argument('--background_alpha_only', default=False, type=bool,
+                    help='Whether the background should be removed from the background image')
 
 parser.set_defaults(bottleneck=True)
 parser.set_defaults(verbose=True)
@@ -385,14 +387,18 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # beta parameter, 1.0
         # print("args.beta", args.beta)
-        if args.beta > 0 and r < args.cutmix_prob:
+        if (args.beta > 0 and r < args.cutmix_prob) or args.background_alpha_only:
             # generate mixed sample
             # lam is random decimal between 0 and 1
             lam = np.random.beta(args.beta, args.beta)
             #print("lam", lam)
 
             # take vector of [0, 1, ..., BATCH_SIZE - 1] and shuffle these indices
-            rand_index = torch.randperm(input.size()[0])
+
+            if input.size()[0] == 2:
+                rand_index = [1, 0]
+            else:
+                rand_index = torch.randperm(input.size()[0])
             #print("rand_index", rand_index)
 
             # the original batch labels vector
@@ -418,28 +424,11 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
             alpha_image = np.array(alpha_image, dtype=np.float32)
             alpha_mask = np.clip(alpha_image[:, :, bbx1:bbx2, bby1:bby2], 0, 1)
-            #alpha_mask_channel_first = moveaxis(alpha_mask, 2, 0)
-            '''
-            print(alpha_mask)
-            print(alpha_mask.shape)
-            foreground_alpha_tensor = torch.from_numpy(alpha_mask)
-            print(foreground_alpha_tensor.size())
-            print(type(foreground_alpha_tensor.data))
 
-            background_alpha_tensor = torch.from_numpy(1 - alpha_mask)
-            print(background_alpha_tensor.size())
-            print(type(background_alpha_tensor.data))
-
-            existing = input.cpu()[:, :, bbx1:bbx2, bby1:bby2]
-            print(existing.size())
-            print(type(existing.data))
-
-            foreground = torch.mm(input.cpu()[:, :, bbx1:bbx2, bby1:bby2], foreground_alpha_tensor)
-            background = torch.mm(input.cpu()[rand_index, :, bbx1:bbx2, bby1:bby2].numpy(), background_alpha_tensor)
-            combined = torch.add(foreground, background)
-            print(combined.shape)
-            input[:, :, bbx1:bbx2, bby1:bby2] = combined
-            '''
+            if args.background_alpha_only:
+                full_background_alpha = np.clip(alpha_image[rand_index, :, :, :], 0, 1)
+                input[rand_index, :, :, :] = torch.from_numpy(full_background_alpha)
+                ones_in_original = np.count_nonzero(full_background_alpha)
 
             foreground_input = input.cpu()[:, :, bbx1:bbx2, bby1:bby2].numpy()
             foreground = np.multiply(foreground_input, alpha_mask)
@@ -450,13 +439,17 @@ def train(train_loader, model, criterion, optimizer, epoch):
             # lambda is also the weight applied to the loss for unshuffled batch images
             # 1 - lambda is the weight applied to the loss portion of shuffled batch images
 
+            bias = 0.000001
             if args.label_blend == 'cutmix':
-                lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (input.size()[-1] * input.size()[-2]))
+                lam = ((bbx2 - bbx1) * (bby2 - bby1) / (input.size()[-1] * input.size()[-2]))
             elif args.label_blend == 'cutblend':
-                ratio = np.count_nonzero(alpha_mask) + 0.000001 / (np.size(alpha_mask) + 0.000001)
-                lam = 1 - (ratio * (bbx2 - bbx1) * (bby2 - bby1)) / (input.size()[-1] * input.size()[-2])
+                ratio = (np.count_nonzero(alpha_mask) + bias) / (np.size(alpha_mask) + bias)
+                lam = (ratio * (bbx2 - bbx1) * (bby2 - bby1)) / (input.size()[-1] * input.size()[-2])
             elif args.label_blend == 'alphas-only':
-                lam = 1 - (np.count_nonzero(alpha_mask) + 0.000001) / (np.count_nonzero(alpha_image) + 0.000001)
+                if not args.background_alpha_only:
+                    print("ERROR bad parameter combo")
+                ones_in_pasted = np.count_nonzero(alpha_mask)
+                lam = (ones_in_pasted + bias) / (ones_in_pasted + ones_in_original + bias)
 
             # compute output
             output = model(input)
