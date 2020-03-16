@@ -365,20 +365,11 @@ def train(train_loader, model, criterion, optimizer, epoch):
         input = input.cuda()
         target = target.cuda()
 
-        print(input.cpu().data.numpy().shape)
-        arr = input.cpu().data.numpy()[0]
-        print(arr.dtype)
-        arr_reshaped = np.transpose(arr, (1, 2, 0))
-        print(arr_reshaped.size)
-        print(arr_reshaped)
-        img = Image.fromarray(arr_reshaped)
-        img.save('bruh-before.png')
-
         r = np.random.rand(1)
         if args.beta > 0 and r < args.cutmix_prob:
             # generate mixed sample
             lam = np.random.beta(args.beta, args.beta)
-            rand_index = torch.randperm(input.size()[0]).cuda()
+            rand_index = torch.randperm(input.size()[0])
             target_a = target
             target_b = target[rand_index]
             bbx1, bby1, bbx2, bby2 = rand_bbox(input.size(), lam)

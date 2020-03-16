@@ -395,19 +395,17 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
             # take vector of [0, 1, ..., BATCH_SIZE - 1] and shuffle these indices
 
-            if input.size()[0] == 2:
-                rand_index = [1, 0]
-            else:
-                rand_index = torch.randperm(input.size()[0])
+            print(index)
+            rand_index = torch.randperm(input.size()[0])
             #print("rand_index", rand_index)
 
             # the original batch labels vector
             target_a = target
-            #print("target_a", target_a)
+            print("target_a", target_a)
 
             # For each index in rand_index , target_b[i] = target_a[index]
             target_b = target[rand_index]
-            #print("target_b", target_b)
+            print("target_b", target_b)
 
             # top left and bottom right points of bounding box
             # y starts at 0 at the top and increases going down
